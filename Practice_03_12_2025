@@ -1,0 +1,140 @@
+
+root@test:/mnt# lsblk
+NAME                        MAJ:MIN RM  SIZE RO TYPE  MOUNTPOINTS
+sda                           8:0    0   30G  0 disk
+├─sda1                        8:1    0    1M  0 part
+├─sda2                        8:2    0    2G  0 part  /boot
+└─sda3                        8:3    0   28G  0 part
+  └─dm_crypt-0              252:0    0   28G  0 crypt
+    ├─ubuntu--vg-ubuntu--lv 252:1    0   14G  0 lvm   /
+    └─ubuntu--vg-test_lv1   252:2    0    6G  0 lvm   /mnt/test_lv1
+sr0                          11:0    1  3.1G  0 rom
+
+
+lvm> lvdisplay
+  --- Logical volume ---
+  LV Path                /dev/ubuntu-vg/ubuntu-lv
+  LV Name                ubuntu-lv
+  VG Name                ubuntu-vg
+  LV UUID                bXGNro-vqIr-9L6J-PugR-oXkj-oZDE-QHEM4e
+  LV Write Access        read/write
+  LV Creation host, time ubuntu-server, 2025-11-27 16:48:02 +0000
+  LV Status              available
+  # open                 1
+  LV Size                <13.99 GiB
+  Current LE             3581
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     256
+  Block device           252:1
+
+  --- Logical volume ---
+  LV Path                /dev/ubuntu-vg/test_lv1
+  LV Name                test_lv1
+  VG Name                ubuntu-vg
+  LV UUID                0mrrS5-55L6-HdC5-fvTt-2W2Y-V6Zy-sg1bK1
+  LV Write Access        read/write
+  LV Creation host, time ubuntu-server, 2025-11-27 16:48:03 +0000
+  LV Status              available
+  # open                 1
+  LV Size                6.00 GiB
+  Current LE             1536
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     256
+  Block device           252:2
+
+
+============================== vgdisplay ==================================
+
+root@test:/mnt# vgs
+  VG        #PV #LV #SN Attr   VSize  VFree
+  ubuntu-vg   1   2   0 wz--n- 27.98g 7.99g
+root@test:/mnt# vim /etc/fstab
+root@test:/mnt# vgdisplay
+  --- Volume group ---
+  VG Name               ubuntu-vg
+  System ID
+  Format                lvm2
+  Metadata Areas        1
+  Metadata Sequence No  7
+  VG Access             read/write
+  VG Status             resizable
+  MAX LV                0
+  Cur LV                2
+  Open LV               2
+  Max PV                0
+  Cur PV                1
+  Act PV                1
+  VG Size               27.98 GiB
+  PE Size               4.00 MiB
+  Total PE              7163
+  Alloc PE / Size       5117 / <19.99 GiB
+  Free  PE / Size       2046 / 7.99 GiB
+  VG UUID               TWmIvc-UYyl-yYhf-jM8B-bNmE-4FxA-6OAkJq
+
+============================ psdisplay ==============================
+
+lvm> pvdisplay
+  --- Physical volume ---
+  PV Name               /dev/mapper/dm_crypt-0
+  VG Name               ubuntu-vg
+  PV Size               27.98 GiB / not usable 0
+  Allocatable           yes
+  PE Size               4.00 MiB
+  Total PE              7163
+  Free PE               2046
+  Allocated PE          5117
+  PV UUID               0PWtrN-T2TS-Z1nN-uvTa-dCBC-Jo2b-ttiuQa
+
+==================== Old Signature Error ============================
+
+# What happened:
+# You ran this inside lvm shell:
+lvm> lvcreate -L 200M -n test_v2 ubuntu-vg
+
+# LVM saw an old ext4 filesystem signature on the new LV area and asked:
+# WARNING: ext4 signature detected on /dev/ubuntu-vg/test_v2 at offset 1080. Wipe it? [y/n]: n
+
+# You answered: n
+# So LVM did NOT wipe the old signature and aborted LV creation:
+# Failed to wipe signatures on logical volume ubuntu-vg/test_v2.
+# Aborting. Failed to wipe start of new LV.
+
+# In simple terms:
+# - There is old filesystem metadata (ext4) on the space you are trying to use.
+# - lvcreate wants to clear it for safety.
+# - You refused, so it stopped.
+
+
+# If you DO NOT need the old data and you are sure this is a new LV:
+# Just say "y" when asked.
+
+lvm> lvcreate -L 200M -n test_v2 ubuntu-vg
+WARNING: ext4 signature detected on /dev/ubuntu-vg/test_v2 at offset 1080. Wipe it? [y/n]: y
+# LVM will wipe the old signature and create the LV successfully.
+
+
+# Non-interactive way from normal shell (not lvm> prompt):
+[root@rhel ~]# lvcreate -L 200M -n test_v2 --yes --wipesignatures y ubuntu-vg
+# --yes              = auto-answer "y" to prompts
+# --wipesignatures y = wipe any existing filesystem signatures
+
+
+# After LV creation, format and mount as usual:
+
+[root@rhel ~]# mkfs.ext4 /dev/ubuntu-vg/test_v2
+[root@rhel ~]# mkdir -p /test_v2
+[root@rhel ~]# mount /dev/ubuntu-vg/test_v2 /test_v2
+[root@rhel ~]# df -h | grep test_v2
+
+
+# If you are worried about data:
+# 1) Make sure /dev/ubuntu-vg/test_v2 is NOT something you still need.
+# 2) Run:
+[root@rhel ~]# lvs
+[root@rhel ~]# lsblk
+
+# If this is really a fresh/new LV, wiping is safe and required to proceed.
