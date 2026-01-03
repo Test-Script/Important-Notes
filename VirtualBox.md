@@ -447,4 +447,167 @@ If you want, I can provide:
 * SSH hardening (keys, non-root, firewall)
 * Multi-VM SSH access setup (Ansible-ready)
 
-=========================================================================================================
+========================= Fixing the DHCP Assignment Issues ===========================
+
+============================================================
+**Root Cause Identified – Devices Are “Strictly Unmanaged”**
+============================================================
+
+Option A (Recommended): Use NetworkManager (Already Installed)
+
+Ubuntu uses NetworkManager by default. Do this:
+
+1) Check device status
+nmcli device status
+
+
+You should see:
+
+enp0s8   ethernet   disconnected
+
+2) Bring the interface up using DHCP
+sudo nmcli device connect enp0s8
+
+3) Verify IPv4 address
+ip addr show enp0s8
+
+============================================================
+
+Your output is conclusive:
+
+```
+enp0s3  ethernet  unmanaged
+enp0s8  ethernet  unmanaged
+```
+
+This means **NetworkManager is NOT managing any interfaces on this VM**.
+Therefore:
+
+• `nmcli` **cannot** bring the interface up
+• DHCP via NetworkManager **will never work**
+• This is **by design**, not an error
+
+Ubuntu is using **Netplan + systemd-networkd**, not NetworkManager.
+
+---
+
+## **Why This Happens (Important Concept)**
+
+On server/minimal Ubuntu installs:
+
+• NetworkManager is disabled
+• Netplan delegates networking to `systemd-networkd`
+• All interfaces appear as **unmanaged** in `nmcli`
+
+So the correct fix is **Netplan**, not `nmcli`.
+
+---
+
+## **Correct Fix – Configure enp0s8 with Netplan (DHCP)**
+
+### 1) Identify Netplan file
+
+```
+ls /etc/netplan/
+```
+
+Typical file:
+
+```
+00-installer-config.yaml
+or
+50-cloud-init.yaml
+```
+
+---
+
+### 2) Edit the Netplan configuration
+
+```
+sudo nano /etc/netplan/*.yaml
+```
+
+Example **correct configuration** for your setup:
+
+```
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    enp0s3:
+      dhcp4: true
+    enp0s8:
+      dhcp4: true
+```
+
+IMPORTANT:
+• YAML is indentation-sensitive
+• Use spaces, not tabs
+
+---
+
+### 3) Apply the configuration
+
+```
+sudo netplan generate
+sudo netplan apply
+```
+
+---
+
+## **4) Verify IP Assignment**
+
+```
+ip addr show enp0s8
+```
+
+Expected:
+
+```
+inet 192.168.56.x/24
+```
+
+---
+
+## **5) Verify Routing**
+
+```
+ip route
+```
+
+You should see:
+
+```
+default via 10.0.2.2 dev enp0s3
+192.168.56.0/24 dev enp0s8
+```
+
+---
+
+## **6) SSH Will Now Work**
+
+From the host:
+
+```
+ssh vboxuser@192.168.56.x
+```
+
+---
+
+## **Why This Is the Correct Architecture**
+
+| Interface | Purpose         | Managed By       |
+| --------- | --------------- | ---------------- |
+| enp0s3    | Internet (NAT)  | systemd-networkd |
+| enp0s8    | Host-only (SSH) | systemd-networkd |
+
+This is **exactly how Ubuntu Server networking is intended to work**.
+
+---
+
+## **Final Verdict**
+
+✔ Interface is UP
+✔ VirtualBox is configured correctly
+✔ Issue was NetworkManager not in use
+✔ Netplan is the authoritative fix
