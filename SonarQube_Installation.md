@@ -1,1 +1,0 @@
-https://docs.vultr.com/how-to-install-sonarqube-on-ubuntu-24-04
