@@ -26,12 +26,27 @@
 
 # Environments --> Test (Test Gate)--> Staging (Release Gate)--> Producation.
 
+# Environment Specific Gates We should have at each stage for Test, QA, Staging, and Production.
+
 # There are two Kinds of the Testing : Code Test, and Infrastructure testing.
 
+======================= Environment Testing  ====================
+
+At each there should be an testing executed for the environment.
+
+- Funcationality Test
+- Security
+- Compliant
+- Performanace
+  - Variance Percentagewise.
+- Smoke Test at Production.
+
+# Production Rollout 
 
 # |1|2|3|4|  --> Segament of the Producation release for the new code-release.
 
-# In-Place Upgrade 
+# In-Place Upgrade
+
     - Deployment Slots : Simple Required Downtime
     - Progressive (Rings) : Control , Complex Take time.
 
@@ -167,4 +182,12 @@ stages:
 Use STAGES  → Environment separation (Build / Test / Deploy)
 Use JOBS    → Parallel execution or different agents
 Use STEPS   → Sequential execution logic
-Use SCRIPTS→ Actual command execution
+Use SCRIPTS → Actual command execution
+
+=================== Difference Between Continous Deployment, and the Continous Delivery =====================================
+
+Continous Delivery → It ensures that we have production ready code for the deployment.
+
+Continous Deployment is completely depends on the Continous Delivery as It is ensuring for deployment we are having the ready code.
+
+Continous Deployment Pushes the Code to the Production environment.
