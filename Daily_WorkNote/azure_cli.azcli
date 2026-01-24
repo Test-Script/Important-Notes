@@ -1,0 +1,7 @@
+# Create Resource Group
+
+RESOURCE_GROUP="rg-identity-test"
+LOCATION="Central India"
+IDENTITY_NAME="test_identity"
+
+az 
