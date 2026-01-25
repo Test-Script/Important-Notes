@@ -1,5 +1,7 @@
 #### Architecture - Access Vault Secret Via VM
 
+![Architecture for the Azure Access Understanding](<Architecture - Access Vault Secret Via VM.png>)
+
 ### Script to Create Complete Azure Infra for Access the Credentials from the Azure Key Vault in your code
 
 Subscription : Test
