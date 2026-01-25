@@ -8,7 +8,9 @@ Subscription : Test
 
 Region : Central India
 
-1. RESOURCE GROUP
+========================================================================================================================
+                                                RESOURCE GROUP
+========================================================================================================================
 
 # Varify the location Currently Enabled for the Subscription
 
@@ -75,7 +77,9 @@ az role assignment create \
   --role "Storage Blob Data Reader" \
   --scope /subscriptions/52f167e5-dfca-4d77-a744-e6c7bc1a3235/resourceGroups/<RG_NAME>/providers/Microsoft.Storage/storageAccounts/<STORAGE_ACCOUNT_NAME>
 
-3. AZURE KEY VAULT
+========================================================================================================================
+                                                AZURE KEY VAULT
+========================================================================================================================
 
 # Variables (Always Do This First)
 
@@ -91,17 +95,17 @@ az group create \
   --name $RESOURCE_GROUP \
   --location $LOCATION
 
-# Create Azure Key Vault (RBAC Enabled – Recommended)
+# Create Azure Key Vault
 
 az keyvault create \
   --name $KEYVAULT_NAME \
   --resource-group $RESOURCE_GROUP \
   --location $LOCATION \
-  --enable-rbac-authorization true
+  --enable-rbac-authorization true           # RBAC Enabled – Recommended
 
 # Assign Key Vault RBAC Permissions
 
-  # Read Secrets Only (Most Common)
+  - Read Secrets Only (Most Common)
 
   az role assignment create \
   --assignee $PRINCIPAL_ID \
@@ -119,7 +123,7 @@ az keyvault create \
 
 az keyvault secret set \
   --vault-name $KEYVAULT_NAME \
-  --name "" \
+  --name "Dbpassword" \
   --value ""
 
 # Read a Secret (CLI – For Testing)
@@ -167,27 +171,16 @@ az keyvault update \
 
   AKS → CSI Secrets Store
 
-# Security Best Practices (Important)
-
-  Always use RBAC, not access policies
-
-  Never store secrets in code or pipelines
-
-  Use Managed Identity only
-
-  Enable purge protection
-
-  Use separate Key Vaults per environment (dev/test/prod)
-
-  Rotate secrets regularly
-
-4. AZURE VNET + TWO SUBNETS
+========================================================================================================================
+                                                AZURE VNET + TWO SUBNETS
+========================================================================================================================
 
 # Define Variables (Mandatory)
 
 SUBSCRIPTION_ID="52f167e5-dfca-4d77-a744-e6c7bc1a3235"
-RESOURCE_GROUP="rg-network-security-test"
 LOCATION="centralindia"
+
+RESOURCE_GROUP="rg-network-security-test"
 
 VNET_NAME="vnet-app-test"
 VNET_CIDR="10.10.0.0/16"
@@ -257,13 +250,16 @@ az keyvault network-rule list \
   --name $KEYVAULT_NAME \
   --resource-group $RESOURCE_GROUP
 
-5. Private Endpoint for the Azure Key Vault
+=======================================================================================================================
+                                      Private Endpoint for the Azure Key Vault
+=======================================================================================================================
 
 # Define Variables (MANDATORY)
 
 SUBSCRIPTION_ID="52f167e5-dfca-4d77-a744-e6c7bc1a3235"
-RESOURCE_GROUP="rg-network-security-test"
 LOCATION="centralindia"
+
+RESOURCE_GROUP="rg-network-security-test"
 
 VNET_NAME="vnet-app-test"
 SUBNET_NAME="subnet-service"
@@ -276,17 +272,13 @@ DNS_LINK_NAME="dnslink-kv-prod"
 
 # Get Key Vault Resource ID
 
-RESOURCE_GROUP="rg-security-test"
-
 KV_RESOURCE_ID=$(az keyvault show \
   --name $KEYVAULT_NAME \
-  --resource-group $RESOURCE_GROUP \
+  --resource-group rg-security-test \
   --query id \
   --output tsv)
 
 # Create Private Endpoint
-
-RESOURCE_GROUP="rg-network-security-test"
 
 az network private-endpoint create \
   --name $PRIVATE_ENDPOINT_NAME \
@@ -343,21 +335,13 @@ RESOURCE_GROUP="rg-security-test"
 KEYVAULT_NAME="kv-tt-app-test-001"
 
 az keyvault update \
-  --name $KEYVAULT_NAME \
-  --resource-group $RESOURCE_GROUP \
+  --name kv-tt-app-test-001 \
+  --resource-group rg-security-test \
   --public-network-access Disabled
 
-6. AZURE VIRTUAL MACHINE – AZ CLI (LINUX VM)
-
-Azure Virtual Machines provide on-demand compute with:
-
-  Full OS control
-
-  VNet integration
-
-  Managed Identity support
-
-  Secure access to Key Vault via Private Endpoint
+=====================================================================================================================
+                                        AZURE VIRTUAL MACHINE – AZ CLI (LINUX VM)
+=====================================================================================================================
 
 # Define Variables (MANDATORY)
 
@@ -375,7 +359,7 @@ NIC_NAME="nic-vm-app-test-01"
 NSG_NAME="nsg-vm-app-test"
 
 ADMIN_USERNAME="azureuser"
-ADMIN_PASSWORD=""
+ADMIN_PASSWORD="Test@1234@4321"
 
 # Create Resource Group :
 
@@ -401,10 +385,11 @@ az network nsg rule create \
   --access Allow \
   --protocol Tcp \
   --destination-port-range 22 \
-  --source-address-prefixes 20.192.0.124
+  --source-address-prefixes 20.219.19.3         <!--- Don't Mention the Public IP Here Use Only System IP from where We would like to access the resource protected by this NSG --->
 
-================================ Observe the Error Here ==============================
-
+=======================================================================================================================
+                                            Observe the Error Here
+=======================================================================================================================
 tejas [ ~ ]$ az network nic create \
   --resource-group $RESOURCE_GROUP \
   --name $NIC_NAME \
@@ -430,12 +415,14 @@ az network vnet subnet list \
 
 Ah, that explains it! In Azure, a Virtual Network (VNet) is a child of the Resource Group it was created in. When you run az network nic create, the command expects to find the VNet and Subnet inside the Resource Group you provided in the --resource-group flag.
 
-Option 1: Use the Full Resource ID (Most Reliable)
+# Use the Full Resource ID :
+
 Instead of just passing the name vnet-app-test, you can pass the full Resource ID of the subnet. This tells Azure exactly where to look, regardless of which Resource Group you are currently targeting for the NIC.
 
 # Replace 'OTHER_RG' with the actual name of the group where the VNet lives
+
 SUB_ID=$(az network vnet subnet show \
-  --resource-group OTHER_RG \
+  --resource-group rg-network-security-test \
   --vnet-name vnet-app-test \
   --name subnet-vm \
   --query id -o tsv)
@@ -447,22 +434,8 @@ az network nic create \
   --name $NIC_NAME \
   --subnet $SUB_ID \
   --network-security-group $NSG_NAME
-  
-Option 2: The "Cross-RG" CLI Syntax
 
-The Azure CLI allows you to reference a subnet in a different Resource Group by using the --subnet and --vnet-name flags, but it can be finicky if the NIC itself is being created elsewhere.
-
-The cleanest logic follows this hierarchy:
-
-  1. The NIC will be created in $RESOURCE_GROUP.
-
-  2. The VNet/Subnet will be referenced from OTHER_RG.
-
-Question : Why does this happen?
-
-Answer : Azure allows "Cross-Resource Group" references (like a NIC in RG-A connected to a VNet in RG-B), but the CLI needs the explicit path. If you only provide the name vnet-app-test, the CLI assumes it’s sitting right next to the NIC in rg-vm-test.
-
-=======================================================================================================
+=====================================================================================================================
 
 # Create Network Interface (NIC)
 
@@ -488,7 +461,181 @@ az vm create \
   --assign-identity \
   --public-ip-address ""
 
-=============================== Deletion Steps In-Case If anything went wrong =========================
+<!--- Note :- When specifying an existing NIC, do not specify NSG, public IP, ASGs, VNet or subnet. --->
+
+# Verify VM Creation
+
+az vm show \
+  --resource-group $RESOURCE_GROUP \
+  --name $VM_NAME \
+  --output table
+
+# Get Private IP of VM
+
+az vm list-ip-addresses \
+  --resource-group $RESOURCE_GROUP \
+  --name $VM_NAME \
+  --query "[0].virtualMachine.network.privateIpAddresses[0]" \
+  --output tsv
+
+# Validate Managed Identity
+
+az vm identity show \
+  --resource-group $RESOURCE_GROUP \
+  --name $VM_NAME
+
+=======================================================================================================================
+                                          AZURE PUBLIC IP ADDRESS – AZ CLI
+=======================================================================================================================
+
+SUBSCRIPTION_ID="52f167e5-dfca-4d77-a744-e6c7bc1a3235"
+RESOURCE_GROUP="rg-network-security-test"
+LOCATION="centralindia"
+
+PUBLIC_IP_NAME="pip-vm-app-test-01"
+DNS_LABEL="vm-app-test-01"
+
+<!--- NOTE:
+  - DNS_LABEL must be unique within the region
+  - Omit DNS if not required
+--->
+
+# Create Public IP Address (Standard + Static)
+
+az network public-ip create \
+  --resource-group $RESOURCE_GROUP \
+  --name $PUBLIC_IP_NAME \
+  --location $LOCATION \
+  --sku Standard \
+  --allocation-method Static \
+  --version IPv4 \
+  --dns-name $DNS_LABEL
+
+Explanation:
+
+  Standard → Secure by default
+  Static → IP does not change
+  dns-name → Optional FQDN
+
+# Verify Public IP Creation
+
+az network public-ip show \
+  --resource-group $RESOURCE_GROUP \
+  --name $PUBLIC_IP_NAME \
+  --output table
+
+Look for:
+
+  ipAddress
+  publicIpAllocationMethod: Static
+  sku: Standard
+
+# Attach Public IP to an Existing VM NIC
+
+  Get NIC Name
+
+  NIC_NAME=$(az vm show \
+  --resource-group rg-vm-test \
+  --name $VM_NAME \
+  --query "networkProfile.networkInterfaces[0].id" \
+  --output tsv | awk -F/ '{print $NF}')
+
+  Associate Public IP with NIC
+
+  PUBLIC_IP_NAME=$(az network public-ip show \
+    --resource-group rg-network-security-test \
+    --name pip-vm-app-test-01 \
+    --query id -o tsv)
+
+  az network nic ip-config update \
+  --resource-group $RESOURCE_GROUP \
+  --nic-name $NIC_NAME \
+  --name ipconfig1 \
+  --public-ip-address $PUBLIC_IP_NAME
+
+  Validate Association
+
+  az vm list-ip-addresses \
+  --resource-group $RESOURCE_GROUP \
+  --name $VM_NAME \
+  --output table
+
+  You should now see:
+
+  Private IP
+  Public IP
+
+========================================================================================================================
+                          Error Was Observed While Trying to Connect with VM via Public Route
+========================================================================================================================
+
+It looks like you’ve successfully created the NIC, but now you’re hitting a "Denied" status on SSH traffic in the Network Watcher diagnostic.
+
+The screenshot shows that your **Allow-SSH** rule (Priority 1000) is being skipped because it's **"Not matched"**. This is why the traffic falls through to the default **DenyAllInBound** rule at the bottom.
+
+### The Problem: Source IP Mismatch
+
+The diagnostic shows:
+
+* **Actual Source IP:** `103.248.75.84`
+* **Allow-SSH Rule:** Marked as **"Not matched"** under the Source column.
+
+Note :- This typically means your `Allow-SSH` rule is restricted to a specific IP address or range that does **not** include `103.248.75.84`.
+
+### How to Fix It via Azure CLI
+
+To fix this, you need to update the NSG rule to allow your current public IP.
+
+**1. Check the current rule configuration**
+Run this to see what source address is currently defined:
+
+az network nsg rule show \
+  --resource-group rg-vm-test \
+  --nsg-name nsg-vm-app-test \
+  --name Allow-SSH
+
+**2. Update the rule to allow your IP**
+
+If you want to allow just your current machine, update the `source-address-prefixes` to match the IP in the screenshot:
+
+az network nsg rule update \
+  --resource-group rg-vm-test \
+  --nsg-name nsg-vm-app-test \
+  --name Allow-SSH \
+  --source-address-prefixes 103.248.75.84
+
+> [!IMPORTANT]
+> For better security, avoid using `*` (Any) as a source. Using your specific IP (as shown in the diagnostic) is the right way to do it.
+
+### Verification
+
+After running the update, go back to the **NSG Diagnostic** in the portal and click **Recheck**. You should see:
+
+* **Applied action:** Allowed
+* **Applied rule:** Allow-SSH
+
+========================================================================================================================
+                                              Comments for Resource Deletion
+========================================================================================================================
+Deleting the Resources
+
+tejas [ ~ ]$ az group list --output table
+Name                      Location      Status
+------------------------  ------------  ---------
+rg-identity-test          centralindia  Succeeded
+rg-security-test          centralindia  Succeeded
+rg-network-security-test  centralindia  Succeeded
+NetworkWatcherRG          centralindia  Succeeded
+rg-vm-test                centralindia  Succeeded
+
+az resource delete --ids $(az resource list --resource-group rg-identity-test --query "[].id" -o tsv)
+az resource delete --ids $(az resource list --resource-group rg-security-test --query "[].id" -o tsv)
+az resource delete --ids $(az resource list --resource-group rg-vm-test --query "[].id" -o tsv)
+az resource delete --ids $(az resource list --resource-group rg-network-security-test --query "[].id" -o tsv)
+
+=======================================================================================================================
+                                      Deletion Steps In-Case If anything went wrong
+========================================================================================================================
 
 # Identify the VM (Optional but Recommended)
 
@@ -552,180 +699,55 @@ az vm delete \
   az vm list \
   --resource-group $RESOURCE_GROUP \
   --output table
-=======================================================================================================
 
-# Verify VM Creation
+======================================================================================================================
+To access secrets from an Azure Key Vault using a Bash script, the most reliable and common method is using the Azure CLI.
+======================================================================================================================
 
-az vm show \
-  --resource-group $RESOURCE_GROUP \
-  --name $VM_NAME \
-  --output table
+The Bash Script Pattern
 
-# Get Private IP of VM
+<!---
 
-az vm list-ip-addresses \
-  --resource-group $RESOURCE_GROUP \
-  --name $VM_NAME \
-  --query "[0].virtualMachine.network.privateIpAddresses[0]" \
-  --output tsv
+#!/bin/bash
 
-# Validate Managed Identity
+# Configuration
+VAULT_NAME="YourVaultName"
+SECRET_NAME="YourSecretName"
 
-az vm identity show \
-  --resource-group $RESOURCE_GROUP \
-  --name $VM_NAME
+echo "Fetching secret: $SECRET_NAME from $VAULT_NAME..."
 
-7. AZURE PUBLIC IP ADDRESS – AZ CLI
+# 1. Retrieve the secret value
+# We use -o tsv (Tab-Separated Values) to get the raw string without quotes or JSON
+SECRET_VALUE=$(az keyvault secret show \
+    --name "$SECRET_NAME" \
+    --vault-name "$VAULT_NAME" \
+    --query "value" \
+    -o tsv)
 
-SUBSCRIPTION_ID="52f167e5-dfca-4d77-a744-e6c7bc1a3235"
-RESOURCE_GROUP="rg-network-security-test"
-LOCATION="centralindia"
+# 2. Check if the secret was retrieved successfully
+if [ -z "$SECRET_VALUE" ]; then
+    echo "Error: Could not retrieve secret."
+    exit 1
+else
+    echo "Success! Secret retrieved (hidden for security)."
+fi
 
-PUBLIC_IP_NAME="pip-vm-app-test-01"
-DNS_LABEL="vm-app-test-01"
+# 3. Use the secret
+# Example: Using it in a curl command or connection string
+# curl -u "admin:$SECRET_VALUE" https://api.example.com
 
-NOTE:
+-->
 
-  - DNS_LABEL must be unique within the region
-  - Omit DNS if not required
+az login --identity : How to specify the specific User managed Identity
 
-# Create Public IP Address (Standard + Static)
+When you have multiple User-Assigned Managed Identities (UAMI) attached to a single resource (like a VM or an Azure Function), just running az login --identity will fail because the CLI doesn't know which one to pick.
 
-az network public-ip create \
-  --resource-group $RESOURCE_GROUP \
-  --name $PUBLIC_IP_NAME \
-  --location $LOCATION \
-  --sku Standard \
-  --allocation-method Static \
-  --version IPv4 \
-  --dns-name $DNS_LABEL
+Option A: Using the Client ID (Easiest)
 
-Explanation:
+az login --identity --username <client_id>
 
-  Standard → Secure by default
-  Static → IP does not change
-  dns-name → Optional FQDN
+Option B: Using the Resource ID
 
-# Verify Public IP Creation
+az login --identity --username /subscriptions/<sub_id>/resourcegroups/<rg_name>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/<identity_name>
 
-az network public-ip show \
-  --resource-group $RESOURCE_GROUP \
-  --name $PUBLIC_IP_NAME \
-  --output table
-
-Look for:
-
-  ipAddress
-  publicIpAllocationMethod: Static
-  sku: Standard
-
-# Attach Public IP to an Existing VM NIC
-
-  RESOURCE_GROUP="rg-vm-test"
-
-  Get NIC Name
-
-  NIC_NAME=$(az vm show \
-  --resource-group $RESOURCE_GROUP \
-  --name $VM_NAME \
-  --query "networkProfile.networkInterfaces[0].id" \
-  --output tsv | awk -F/ '{print $NF}')
-
-  Associate Public IP with NIC
-
-PUBLIC_IP_NAME = "/subscriptions/52f167e5-dfca-4d77-a744-e6c7bc1a3235/resourceGroups/rg-network-security-test/providers/Microsoft.Network/publicIPAddresses/pip-vm-app-test-01"
-
-  az network nic ip-config update \
-  --resource-group $RESOURCE_GROUP \
-  --nic-name $NIC_NAME \
-  --name ipconfig1 \
-  --public-ip-address $PUBLIC_IP_NAME
-
-  Validate Association
-
-  az vm list-ip-addresses \
-  --resource-group $RESOURCE_GROUP \
-  --name $VM_NAME \
-  --output table
-
-  You should now see:
-
-  Private IP
-  Public IP
-
-======================== Error Was Observed While Trying to Connect with VM via Public Route ==========
-
-
-It looks like you’ve successfully created the NIC, but now you’re hitting a "Denied" status on SSH traffic in the Network Watcher diagnostic.
-
-The screenshot shows that your **Allow-SSH** rule (Priority 1000) is being skipped because it's **"Not matched"**. This is why the traffic falls through to the default **DenyAllInBound** rule at the bottom.
-
-### The Problem: Source IP Mismatch
-
-The diagnostic shows:
-
-* **Actual Source IP:** `103.248.75.84`
-* **Allow-SSH Rule:** Marked as **"Not matched"** under the Source column.
-
-This typically means your `Allow-SSH` rule is restricted to a specific IP address or range that does **not** include `103.248.75.84`.
-
----
-
-### How to Fix It via Azure CLI
-
-To fix this, you need to update the NSG rule to allow your current public IP.
-
-**1. Check the current rule configuration**
-Run this to see what source address is currently defined:
-
-```bash
-az network nsg rule show \
-  --resource-group rg-vm-test \
-  --nsg-name nsg-vm-app-test \
-  --name Allow-SSH
-
-```
-
-**2. Update the rule to allow your IP**
-If you want to allow just your current machine, update the `source-address-prefixes` to match the IP in the screenshot:
-
-```bash
-az network nsg rule update \
-  --resource-group rg-vm-test \
-  --nsg-name nsg-vm-app-test \
-  --name Allow-SSH \
-  --source-address-prefixes 103.248.75.84
-
-```
-
-> [!IMPORTANT]
-> For better security, avoid using `*` (Any) as a source. Using your specific IP (as shown in the diagnostic) is the right way to do it.
-
----
-
-### Verification
-
-After running the update, go back to the **NSG Diagnostic** in the portal and click **Recheck**. You should see:
-
-* **Applied action:** Allowed
-* **Applied rule:** Allow-SSH
-
-===================================================Comments for Resource Deletion ===================================================
-
-Deleting the Resources
-
-tejas [ ~ ]$ az group list --output table
-Name                      Location      Status
-------------------------  ------------  ---------
-rg-identity-test          centralindia  Succeeded
-rg-security-test          centralindia  Succeeded
-rg-network-security-test  centralindia  Succeeded
-NetworkWatcherRG          centralindia  Succeeded
-rg-vm-test                centralindia  Succeeded
-
-az resource delete --ids $(az resource list --resource-group rg-identity-test --query "[].id" -o tsv)
-az resource delete --ids $(az resource list --resource-group rg-security-test --query "[].id" -o tsv)
-az resource delete --ids $(az resource list --resource-group rg-network-security-test --query "[].id" -o tsv)
-az resource delete --ids $(az resource list --resource-group rg-vm-test --query "[].id" -o tsv)
-
-======================================================================================================
+======================================================================================================================
