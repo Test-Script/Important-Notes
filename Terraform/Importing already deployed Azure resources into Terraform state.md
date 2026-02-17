@@ -170,3 +170,70 @@ Correct Azure ID
 terraform plan shows zero drift
 
 ======================================================================================
+Example Of Execution I have been added here
+======================================================================================
+
+
+C:\Users\DELL\Documents\Terraform_Project\Azurerm_Terraform\env\dev>az group show --name rg-vm-test --query id -o tsv
+/subscriptions/52f167e5-dfca-4d77-a744-e6c7bc1a3235/resourceGroups/rg-vm-test
+
+C:\Users\DELL\Documents\Terraform_Project\Azurerm_Terraform\env\dev>terraform import module.rg-vm.azurerm_resource_group.this /subscriptions/52f167e5-dfca-4d77-a744-e6c7bc1a3235/resourceGroups/rg-vm-test
+╷
+│ Error: Module not installed
+│
+│   on main.tf line 20:
+│   20: module "rg-vm" {
+│
+│ This module is not yet installed. Run "terraform init" to install all modules required by this configuration.
+╵
+
+
+C:\Users\DELL\Documents\Terraform_Project\Azurerm_Terraform\env\dev>terraform init
+Initializing the backend...
+Initializing modules...
+- rg-vm in ..\..\modules\resource_group
+Initializing provider plugins...
+- Reusing previous version of hashicorp/azurerm from the dependency lock file
+- Using previously-installed hashicorp/azurerm v3.117.1
+
+Terraform has been successfully initialized!
+
+You may now begin working with Terraform. Try running "terraform plan" to see
+any changes that are required for your infrastructure. All Terraform commands
+should now work.
+
+If you ever set or change modules or backend configuration for Terraform,
+rerun this command to reinitialize your working directory. If you forget, other
+commands will detect it and remind you to do so if necessary.
+
+C:\Users\DELL\Documents\Terraform_Project\Azurerm_Terraform\env\dev>terraform import module.rg-vm.azurerm_resource_group.this /subscriptions/52f167e5-dfca-4d77-a744-e6c7bc1a3235/resourceGroups/rg-vm-test
+module.rg-vm.azurerm_resource_group.this: Importing from ID "/subscriptions/52f167e5-dfca-4d77-a744-e6c7bc1a3235/resourceGroups/rg-vm-test"...
+module.rg-vm.azurerm_resource_group.this: Import prepared!
+  Prepared azurerm_resource_group for import
+module.rg-vm.azurerm_resource_group.this: Refreshing state... [id=/subscriptions/52f167e5-dfca-4d77-a744-e6c7bc1a3235/resourceGroups/rg-vm-test]
+
+Import successful!
+
+The resources that were imported are shown above. These resources are now in
+your Terraform state and will henceforth be managed by Terraform.
+
+
+C:\Users\DELL\Documents\Terraform_Project\Azurerm_Terraform\env\dev>terraform plan
+module.rg-identity.azurerm_resource_group.this: Refreshing state... [id=/subscriptions/52f167e5-dfca-4d77-a744-e6c7bc1a3235/resourceGroups/rg-identity-test]
+module.rg-security.azurerm_resource_group.this: Refreshing state... [id=/subscriptions/52f167e5-dfca-4d77-a744-e6c7bc1a3235/resourceGroups/rg-security-test]
+module.rg-network-security.azurerm_resource_group.this: Refreshing state... [id=/subscriptions/52f167e5-dfca-4d77-a744-e6c7bc1a3235/resourceGroups/rg-network-security-test]
+module.rg-vm.azurerm_resource_group.this: Refreshing state... [id=/subscriptions/52f167e5-dfca-4d77-a744-e6c7bc1a3235/resourceGroups/rg-vm-test]
+
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration and found no differences, so no changes are needed.
+
+C:\Users\DELL\Documents\Terraform_Project\Azurerm_Terraform\env\dev>terraform state list
+module.rg-identity.azurerm_resource_group.this
+module.rg-network-security.azurerm_resource_group.this
+module.rg-security.azurerm_resource_group.this
+module.rg-vm.azurerm_resource_group.this
+
+C:\Users\DELL\Documents\Terraform_Project\Azurerm_Terraform\env\dev>
+
+===========================================================================================

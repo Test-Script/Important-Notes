@@ -1,7 +1,7 @@
 C:\Users\DELL\Documents\Terraform_Project\Azurerm_Terraform\env\dev>terraform plan module.rg.azurerm_resource_group.this: Refreshing state... [id=/subscriptions/52f167e5-dfca-4d77-a744-e6c7bc1a3235/resourceGroups/rg-identity-test] module.rg-security.azurerm_resource_group.this: Refreshing state... [id=/subscriptions/52f167e5-dfca-4d77-a744-e6c7bc1a3235/resourceGroups/rg-security-test] Terraform used the selected providers to generate the following execution plan. Resource actions are indicated with the following symbols: + create - destroy Terraform will perform the following actions: # module.rg.azurerm_resource_group.this will be destroyed # (because azurerm_resource_group.this is not in configuration) - resource "azurerm_resource_group" "this" { - id = "/subscriptions/52f167e5-dfca-4d77-a744-e6c7bc1a3235/resourceGroups/rg-identity-test" -> null - location = "centralindia" -> null - name = "rg-identity-test" -> null - tags = { - "Environment" = "Development_Test" } -> null # (1 unchanged attribute hidden) } # module.rg-identity.azurerm_resource_group.this will be created + resource "azurerm_resource_group" "this" { + id = (known after apply) + location = "centralindia" + name = "rg-identity-test" + tags = { + "Environment" = "Development_Test" } } Plan: 1 to add, 0 to change, 1 to destroy. Changes to Outputs: - resource_group_id = "/subscriptions/52f167e5-dfca-4d77-a744-e6c7bc1a3235/resourceGroups/rg-identity-test" -> null - resource_group_name = "rg-identity-test" -> null
 
 =======================================================================================
-                                state address mismatch issue
+                                State address mismatch issue
 =======================================================================================
 
 🔎 What Happened
@@ -118,3 +118,19 @@ Always:
     terraform plan
 
 Never rename blindly.
+
+=======================================================================================
+Recent Changes Has been Made in our Infrastructure
+=======================================================================================
+
+terraform state mv module.rg-vm.azurerm_resource_group.this module.rg[\"vm\"].azurerm_resource_group.this
+
+terraform state mv module.rg-aks.azurerm_resource_group.this module.rg[\"aks\"].azurerm_resource_group.this
+
+terraform state mv module.rg-app.azurerm_resource_group.this module.rg[\"app\"].azurerm_resource_group.this
+
+terraform state mv module.rg-identity.azurerm_resource_group.this module.rg[\"identity\"].azurerm_resource_group.this
+
+terraform state mv module.rg-network-security.azurerm_resource_group.this module.rg[\"network_security\"].azurerm_resource_group.this
+
+terraform state mv module.rg-security.azurerm_resource_group.this module.rg[\"security\"].azurerm_resource_group.this
