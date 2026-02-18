@@ -19,6 +19,16 @@ Understanding Of Kubernetes In Depth
     - Stateless component (can scale horizontally).
     - All components communicate only via API server.
 
+    Every write operation:
+
+    Immediately persisted to etcd.
+
+    Every read:
+
+    Served from cache (watch cache) when possible.
+
+    etcd is not hit for every single read.
+
 2. etcd
 
     - Distributed key-value store.
@@ -57,6 +67,36 @@ Understanding Of Kubernetes In Depth
         - Node affinity/anti-affinity
         - Topology spread constraints
 
+    Frequency of Schedular to report to API Server:
+
+    kube-scheduler → API Server
+
+    - Scheduler does NOT poll periodically.
+
+        It uses:
+
+            ✔ Informers
+            ✔ Watch API
+            ✔ Event-driven queue
+
+        Flow:
+
+        - Scheduler establishes a long-lived WATCH connection to API Server.
+
+        API Server pushes updates when:
+
+        - New Pod created
+
+        - Node updated
+
+        - Pod deleted
+
+        - Taints changed
+
+        Scheduler immediately reacts.
+
+        So frequency = real-time event driven.
+
 4. kube-controller-manager
 
     - Runs multiple controllers:
@@ -67,6 +107,22 @@ Understanding Of Kubernetes In Depth
         - Endpoint controller
 
         These controllers implement the reconciliation loop: Desired State ≠ Current State → Take corrective action.
+    
+    kube-controller-manager → API Server
+
+    Same model as scheduler.
+
+    - Uses shared informers
+
+    - Maintains watch streams
+
+    - Reacts to events
+
+    Example:
+
+    Deployment created → ReplicaSet controller reacts immediately
+
+    Node NotReady → Node controller reacts
 
 ==========================================================================================================
                                         Worker Node (Data Plane)
@@ -102,6 +158,35 @@ Worker nodes run actual workloads.
         - It queries the API Server to get the latest node resource data (which originally came from kubelet).
         - Then it decides on which node a new Pod should be scheduled, based on resource availability, taints/tolerations, affinity, etc.
 
+    Frequency Of Node Status Update, and Heatbeat Signal.
+
+    kubelet → API Server
+    
+    1. Node Status Updates
+
+        - Default: every 10 seconds
+
+        Controlled by: --node-status-update-frequency (default 10s)
+
+        - This updates:
+
+            - Capacity
+
+            - Allocatable
+
+            - Conditions (Ready, MemoryPressure, DiskPressure, etc.)
+        
+    2. Node Lease (HeartBeat)
+
+        - Every 10 Seconds
+        - Uses a lightweight Lease object in kube-node-lease namespace
+        - Faster and cheaper than full Node object updates
+
+    If kubelet stops updating:
+
+        After 40 seconds (default) node becomes NotReady
+        (--node-monitor-grace-period in controller-manager)
+
 2. kube-proxy
 
     - Implements Service networking.
@@ -120,6 +205,330 @@ Worker nodes run actual workloads.
         - Pulling images
         - Creating containers
         - Managing container lifecycle
+
+==========================================================================================================
+                                            Kubelet
+==========================================================================================================
+
+    On-demand only.
+
+    When you run:
+    - kubectl get pods
+
+    It makes a request once.
+    Unless you use:
+    kubectl get pods -w
+    That establishes a watch stream.
+
+
+==========================================================================================================
+                                Core Kubernetes control-plane engineering.
+==========================================================================================================
+
+“Kubernetes components use watch-based, event-driven reconciliation loops against the API Server rather than periodic polling.”
+
+Three precise sections:
+
+    1. How Informers work internally
+
+    2. What happens when a watch connection drops
+
+    3. How API Server scales with thousands of watches
+
+Excellent — this is **core Kubernetes control-plane engineering**.
+I’ll explain this in three precise sections:
+
+1. How Informers work internally
+2. What happens when a watch connection drops
+3. How API Server scales with thousands of watches
+
+---
+
+# How Informers Work Internally
+
+Informers are part of **client-go** and are used by:
+
+    * kube-scheduler
+    * kube-controller-manager
+    * Custom controllers
+    * Operators
+
+They are built on top of:
+
+    * List API
+    * Watch API
+    * Local cache
+    * Workqueue
+
+## Internal Flow of an Informer
+
+Step 1 — Initial LIST
+The informer calls the API Server:
+
+```
+GET /api/v1/pods
+```
+
+It retrieves all existing objects and stores them in a local cache (Store / Indexer).
+
+Step 2 — Establish WATCH
+Then it calls:
+
+```
+GET /api/v1/pods?watch=true&resourceVersion=X
+```
+
+Now it opens a **long-lived HTTP connection**.
+
+Step 3 — API Server streams events
+
+Events streamed are:
+
+    * ADDED
+    * MODIFIED
+    * DELETED
+    * BOOKMARK (progress notification)
+
+Step 4 — Delta FIFO Queue
+
+Events are pushed into a **DeltaFIFO queue**:
+
+    * Deduplicates events
+    * Maintains order
+
+Step 5 — Local Cache Update
+
+The informer updates its local in-memory cache.
+
+Step 6 — Event Handlers Triggered
+
+Registered handlers run:
+
+    ```
+    OnAdd(obj)
+    OnUpdate(oldObj, newObj)
+    OnDelete(obj)
+    ```
+
+Step 7 — Object added to Workqueue
+
+Controller processes object from queue and reconciles desired vs actual state.
+
+## Why Informers Are Efficient
+
+Without informers:
+
+    * Every controller would repeatedly query API Server.
+
+With informers:
+
+    * One LIST
+    * One WATCH
+    * Everything local afterward
+    * Event-driven updates
+
+This drastically reduces API load.
+
+# What Happens When Watch Connection Drops?
+
+Watch connections can drop due to:
+
+    * API Server restart
+    * Network glitch
+    * Load balancer timeout
+    * etcd compaction
+    * Idle timeout
+
+## Case 1: Normal Drop
+
+client-go automatically:
+
+    1. Detects connection closed
+    2. Re-establishes LIST + WATCH
+    3. Continues from last known resourceVersion
+
+No data loss.
+
+---
+
+## Case 2: "ResourceVersion Too Old" Error
+
+etcd compacts old revisions.
+
+If the informer tries to resume from an expired version:
+
+API Server returns:
+
+```
+410 Gone
+resourceVersion too old
+```
+
+Then informer does:
+
+1. Full LIST again
+2. Gets fresh resourceVersion
+3. Starts new WATCH
+
+This ensures consistency.
+
+---
+
+### Important Concept: ResourceVersion
+
+Every Kubernetes object has:
+
+```
+metadata.resourceVersion
+```
+
+It represents the etcd revision.
+
+Watches always resume from a specific resourceVersion.
+
+That’s how Kubernetes guarantees no missed events.
+
+## How API Server Scales with Thousands of Watches
+
+Large clusters can have:
+
+    * 5,000 nodes
+    * 200,000 pods
+    * Thousands of controllers
+    * Many kubectl users
+    * Operators
+
+That means thousands of open watch streams.
+
+## How does API Server handle this?
+
+Mechanism 1: Watch Cache
+
+The API Server does NOT hit etcd for every watch.
+
+Instead:
+
+    * It maintains an in-memory watch cache per resource type.
+    * New watch clients attach to the cache.
+    * Events are served from memory.
+
+This drastically reduces etcd load.
+
+Mechanism 2: Shared Informers
+
+Inside components like controller-manager:
+
+Multiple controllers share the same informer.
+
+Example:
+
+    * ReplicaSet controller
+    * Deployment controller
+
+They don’t create separate watches for Pods.
+They share one.
+
+This reduces watch count.
+
+Mechanism 3: API Priority & Fairness (APF)
+
+API Server uses:
+
+    * Request queues
+    * Flow control
+    * Priority levels
+
+To prevent overload.
+
+High priority:
+
+    * System controllers
+    * kubelet
+
+Lower priority:
+
+    * kubectl users
+
+This protects control plane stability.
+
+Mechanism 4: Horizontal Scaling of API Server
+
+In production clusters:
+
+    * Multiple API Server replicas run
+    * Behind a load balancer
+    * Stateless design
+
+Watches are distributed across instances.
+
+Mechanism 5: etcd Compaction & Efficient Storage
+
+    * etcd periodically compacts old revisions.
+    * Prevents unbounded growth.
+    * Improves watch performance.
+
+
+## "Kubernetes uses a LIST-WATCH mechanism implemented via client-go informers. Informers maintain a local cache synchronized through long-lived watch streams. If a watch drops, it resumes using resourceVersion. The API Server scales using watch caches, shared informers, API priority and fairness, and horizontal replication."
+
+If you want, next we can go even deeper into:
+
+* DeltaFIFO internals
+* Workqueue rate limiting
+* Scheduler framework internals
+* How kubelet watches PodSpec changes
+* etcd revision model in detail
+
+You are now in advanced Kubernetes control-plane territory.
+
+
+==========================================================================================================
+            Informers using a real production-style scenario so the mechanism becomes concrete.
+==========================================================================================================
+
+Example : A Deployment creates Pods, and the ReplicaSet controller must maintain desired replicas.
+
+This is exactly how Kubernetes controllers work internally.
+
+Real-Time Scenario:
+
+kubelet Client : kubectl apply -f deployment.yaml
+
+    Deployment spec:
+
+        replicas: 3
+        image: nginx
+
+    Now let’s see how informers make everything event-driven.
+
+Step 1️⃣ — Object Created in API Server
+
+    API Server validates Deployment.
+
+    Stores it in etcd.
+
+    Deployment controller detects it.
+
+But how does it detect it?
+
+👉 Using an Informer.
+
+🔎 What the ReplicaSet Controller Actually Does
+
+Inside kube-controller-manager:
+
+There is a shared informer for:
+
+    Deployments
+
+    ReplicaSets
+
+    Pods
+
+Let’s focus on the Pod informer.
+
+📦 How the Pod Informer Works (Internally)
+
+
 
 ==========================================================================================================
                                 End to End Workflow (Pod Creation)
@@ -172,5 +581,14 @@ Key Architectural Principles
 - API-driven architecture
 
 - Controller-based reconciliation model
+
+Summary Table
+Component | Communication Pattern | Frequency
+
+kubelet (node status) | Update | ~10s
+kubelet (lease heartbeat)| Update | ~10s
+scheduler | Watch stream | Real-time
+controller-manager | Watch stream | Real-time
+kubectl | On demand | User-driven
 
 ==========================================================================================================
