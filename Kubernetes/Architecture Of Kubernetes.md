@@ -221,6 +221,16 @@ Worker nodes run actual workloads.
     That establishes a watch stream.
 
 
+===========================================================================================================
+                                Component | Communication Pattern | Frequency
+===========================================================================================================
+
+1. kubelet (node status) | Update | ~10s
+2. kubelet (lease heartbeat)| Update | ~10s
+3. scheduler | Watch stream | Real-time
+4. controller-manager | Watch stream | Real-time
+5. kubectl | On demand | User-driven
+
 ==========================================================================================================
                                 Core Kubernetes control-plane engineering.
 ==========================================================================================================
