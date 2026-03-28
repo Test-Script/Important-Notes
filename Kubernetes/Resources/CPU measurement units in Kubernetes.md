@@ -1,5 +1,5 @@
 ==========================================================================================================
-                                    CPU measurement units in Kubernetes
+                                    **CPU measurement units in Kubernetes**
 ==========================================================================================================
 
 Kubernetes introduces its own unit system to be cloud-agnostic and precise across any hardware.
@@ -32,13 +32,13 @@ This is considering the Burstable pod.
 
 # Two Different Phases Are Happening
 
-1. Scheduling Phase (Kubernetes decision):
+1. **Scheduling Phase (Kubernetes decision):**
 
 Kubernetes scheduler looks only at requests:
 
 the pod only required 0.1 CPU.
 
-2. Runtime Phase (Linux enforcement):
+2. **Runtime Phase (Linux enforcement):**
 
 Now the Completely Fair Scheduler
 
@@ -52,19 +52,19 @@ Our Container is allowed:
 
 # How It Actually Operates
 
-Case 1: Low CPU contention (idle node):
+🟢 **Case 1: Low CPU contention (idle node):**
 
 If node has free CPU, than our container can use upto 500m continously.
 
 We will get full bursts without throttling. Fast performance, No restriction felt
 
-Case 2: Moderate contention:
+🟡 **Case 2: Moderate contention:**
 
 Now multiple pods are competing, Scheduler ensures that we will get at least ~100m share.
 
 We can still get bursting upto 500m, But the Performance fluctuates, Some latency Variation.
 
-Case 3: High contention (CPU pressure):
+🔴 **Case 3: High contention (CPU pressure):**
 
 Now node is saturated, Kernel enforces fairness:
 
@@ -111,7 +111,7 @@ Your performance = cluster load dependent.
 
 
 ===================================================================================================================
-                          Example to Understand the behaviour of CPU Allocation to Pods
+                          **Example to Understand the behaviour of CPU Allocation to Pods**
 ===================================================================================================================
 
 ## Deployment with requests: 100m and limits: 500m
@@ -145,7 +145,7 @@ Kubernetes scheduler sees: Each pod needs only 100m CPU
 
 👉 So on a node with 2 CPUs: It can schedule ~20 pods (2000m / 100m).
 
-But actual max usage could be: 20 pods × 500m = 10 CPU demand
+🔴 But actual max usage could be: 20 pods × 500m = 10 CPU demand
 
 👉 This is intentional overcommit.
 
@@ -223,10 +223,55 @@ kubectl describe pod <pod-name>
 "I need at least 10% CPU,
 but I may use up to 50% if available"
 
-Important Information :
+🎯 Important Information :
 
-- Scheduler trusts requests
-- Kernel enforces limits
-- Reality depends on contention
+✅ Scheduler trusts requests
+✅ Kernel enforces limits
+✅ Reality depends on contention
 
-## Your pod behaves like a “minimum guaranteed user” with “opportunistic bursting”.
+================================================================================================================================================
+
+Question : In the K8s, Scheduler is only considers the resource requests while choosing Right Node, Or Will it be consider both requests & limits.
+
+👉 The Kubernetes scheduler considers only resource requests, not limits, when selecting a node for a Pod.
+
+Why Only Requests?
+
+The Scheduler's Job is to find a node where the Pod can be guaranteed to run. Resource requests represent the minimum guaranteed resources a container needs — so the scheduler uses them to determine if a node has enough allocatable capacity.
+
+resources:
+  requests:
+    cpu: "250m"      **Scheduler uses THIS for node selection**
+    memory: "128Mi"  **And THIS**
+  limits:
+    cpu: "500m"      **Ignored during scheduling**
+    memory: "256Mi"  **Ignored during scheduling**
+
+### What the Scheduler Actually Does
+
+1. **Filtering Phase** — Eliminates nodes where allocatable resources are less than the Pod's total requests.
+2. **Scoring Phase** — Ranks remaining nodes using strategies like `LeastRequestedPriority` or `MostRequestedPriority`, again based on **requests**.
+
+The node's allocatable capacity is calculated as:
+
+**Allocatable = Node Capacity - System Reserved - Kube Reserved**
+
+And a node is considered "full" when:
+
+**Sum of all Pod requests on node ≥ Node Allocatable**
+
+## Question : What About Limits Then?
+
+Limits are enforced at runtime by the Kubelet, not during scheduling:
+
+⏩ CPU --> Throttled by Linux CFS (cgroups) — Pod slowed down, not killed.
+
+⏩ Memory --> OOMKilled if it exceeds the limit.
+
+So a Pod can run on a node even if its limit exceeds what's physically available — but it risks being OOMKilled at runtime.
+
+**If you set no requests (only limits, or nothing at all), Kubernetes doesn't reserve any capacity on the node. The scheduler may place multiple resource-hungry Pods on the same node, leading to node pressure, evictions, or OOMKills at runtime — even though scheduling succeeded.**
+
+**Best practice: Always set explicit requests that reflect realistic baseline usage, and set limits as a safety cap above that.**
+
+================================================================================================================================================
