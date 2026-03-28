@@ -10,9 +10,9 @@ QoS classes are used by Kubernetes to decide which Pods to evict from a Node exp
 
 QoS Classes as below,
 
-🟢 Guaranteed --> Stickest resoruce requests, and Memory limits to containers.
-🟢 Burstable --> Only requests set, OR requests ≠ limits.
-🟢 BestEffort -->  Neither requests nor limits set.
+🟢 Guaranteed --> Strictest resource requests and memory limits for containers.
+🟢 Burstable --> Requests are set, or requests and limits are not equal.
+🟢 BestEffort -->  Neither requests nor limits are set.
 
 ====================================================================================================
 
@@ -41,6 +41,14 @@ The kube-scheduler does not consider QoS class when selecting which Pods to pree
 The QoS class is determined when the Pod is created and remains unchanged for the lifetime of the Pod. If you later attempt an in-place resize that would result in a different QoS class, the resize is rejected by admission.
 
 ====================================================================================================
+                                    **Memory QoS with cgroup v2**
+====================================================================================================
+
+Memory QoS uses the memory controller of cgroup v2 to guarantee memory resources in Kubernetes. The memory request of a container is used to set `memory.min`, which reserves that amount of memory and ensures it is never reclaimed by the kernel. The memory limit of a container is used to set `memory.high`. When a container's memory usage approaches this value, the kernel throttles (slows down) further memory allocations to prevent the system from being overwhelmed by sudden spikes in memory usage. This mechanism ensures both guaranteed memory availability (`memory.min`) and controlled memory usage (`memory.high`) for Kubernetes pods.
+
+Memory QoS relies on QoS class to determine which settings to apply; however, QoS class and Memory QoS are different mechanisms that both provide controls over quality of service.
+
+====================================================================================================
 
 ### CFS (Linux Completely Fair Scheduler) Perspective
 
@@ -49,7 +57,7 @@ This is where it gets deeper. When no CPU limit is set, **no CFS quota is config
 #### With Limits Set:
 Kubernetes translates CPU limits into CFS bandwidth control parameters:
 
-cpu.cfs_quota_us  = <limit in millicores> / 1000 * cfs_period_us
+cpu.cfs_quota_us = (limit in millicores / 1000) * cfs_period_us
 cpu.cfs_period_us = 100000 (100ms default)
 
 
@@ -66,7 +74,8 @@ cpu.shares        = <derived from request (250m)>
 
 The `cpu.shares` value is set from the **request**:
 
-cpu.shares = (250m / 1000) * 1024 = 256 shares
+cpu.shares = (request in millicores / 1000) * 1024  
+For example: cpu.shares = (250 / 1000) * 1024 = 256 shares
 
 > **`cpu.shares` doesn't cap usage — it only controls relative priority when the CPU is contested.**
 
@@ -108,8 +117,8 @@ cgroup memory.limit_in_bytes = -1 (unlimited)
 Container can grow until node runs out of memory
        ↓
 Linux OOM Killer kicks in (not Kubernetes)
-       ↓
-OOM Killer picks a process to kill based on oom_score
+OOM Killer picks a process to kill based on its `oom_score`, which is a value assigned by the Linux kernel to each process reflecting its likelihood of being killed when the system runs out of memory (higher `oom_score` means higher chance of being killed).
+(may kill your container OR another process on the node)
 (may kill your container OR another process on the node)
 
 ====================================================================================================
